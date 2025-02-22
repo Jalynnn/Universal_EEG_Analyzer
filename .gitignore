@@ -171,5 +171,5 @@ cython_debug/
 .pypirc
 
 # Ah participant data
-.csv
-.xdf
+*.csv
+*.xdf
