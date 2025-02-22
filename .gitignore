@@ -173,3 +173,4 @@ cython_debug/
 # Ah participant data
 *.csv
 *.xdf
+*.fif
