@@ -1,4 +1,5 @@
 # Universal_EEG_Analyzer
+
 MNE-Python for frequency analysis (and eventually ERP analysis).
 
 # Set Up
