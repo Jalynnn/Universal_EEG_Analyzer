@@ -6,25 +6,15 @@ MNE-Python for frequency analysis (and eventually ERP analysis).
 
 Create a folder for raw data.
 
-The current working file is "EEG_Analysis_MNE_Add_Gamma.ipynb" but I would like to break it out of one big class in the "eeg_analysis.ipynb" file.
+The current working file is "EEG_Analysis_MNE_Add_Gamma2.ipynb".
 
 To run the code, I use anaconda now with pip imports. The install commands available in the .ipynb file.
 
 # EEG_Analysis_MNE_Add_Gamma.ipynb
 
-Data is currently being pulled from the "Dataset" folder and outputs in the "GammaResults" folders.
+Data is currently being pulled from the "Dataset" folder and outputs in the "GammaResult2" folders.
 
-"GammaResults" consists of the outputs that were used in the study analysis.
-
-# eeg_analysis.ipynb
-
-Data is currently being pulled from the "Raw" folder and outputs in the "Results" folders.
-
-"Results" consists of the outputs that should match "GammaResults" but don't. It's a work in progress. Again, I am just trying to get the code out of the one big class.
-
-# EEG_Analysis_MNE_Add_Gamma_2.ipynb
-
-I'm gonna casually restart. See what happens. Especially since it's been a minute since I looked at this last.
+The All_Ratios_Summary.csv is your friend summarizing both ratios used in the first study! With the exception for the gamma results
 
 # Not familiar with anaconda?
 
