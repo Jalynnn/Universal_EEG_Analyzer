@@ -1,0 +1,727 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# Load necessary libraries
+library(readxl)
+library(tidyverse)
+library(effsize)
+library(FSA)
+library(ggpubr)
+library(ggplot2)
+```
+
+```{r}
+# Load the dataset with ratios
+file_path <- "C:/Users/caraa/OneDrive - UCB-O365/CLT_ONR_XR_Training/VRTRAIN_CU_fNIRS_EEG_studies/Experiment 1/EEG_pipeline/ratios_forR.xlsx"
+df <- read_excel(file_path, sheet = "Sheet1")
+
+# Ensure Condition is a factor
+df <- df %>%
+  mutate(Condition = as.factor(Phase))
+
+shapiro.test(df$Cond3_ratio1)
+
+#bascially a t-test
+#ratio within condition
+wilcox.test(Cond1_ratio1 ~ Phase, data = df)
+wilcox.test(Cond1_ratio2 ~ Phase, data = df)
+wilcox.test(Cond2_ratio1 ~ Phase, data = df)
+wilcox.test(Cond2_ratio2 ~ Phase, data = df)
+wilcox.test(Cond3_ratio1 ~ Phase, data = df)
+wilcox.test(Cond3_ratio2 ~ Phase, data = df)
+wilcox.test(Cond4_ratio1 ~ Phase, data = df)
+wilcox.test(Cond4_ratio2 ~ Phase, data = df)
+#effect size test
+cliff.delta(Cond1_ratio1 ~ Phase, data = df)
+cliff.delta(Cond1_ratio2 ~ Phase, data = df)
+cliff.delta(Cond2_ratio1 ~ Phase, data = df)
+cliff.delta(Cond2_ratio2 ~ Phase, data = df)
+cliff.delta(Cond3_ratio1 ~ Phase, data = df)
+cliff.delta(Cond3_ratio2 ~ Phase, data = df)
+cliff.delta(Cond4_ratio1 ~ Phase, data = df)
+cliff.delta(Cond4_ratio2 ~ Phase, data = df)
+#pairwise
+r2dunn <- dunnTest(Cond1_ratio2 ~ Phase, data = df, method = "bonferroni")
+
+#ratios between condition
+ratios_bt_cond <- df %>%
+  group_by(Phase) %>%
+  summarise(
+    test = list(wilcox.test(Cond1_ratio1, Cond2_ratio1, paired = TRUE),
+                wilcox.test(Cond1_ratio2, Cond3_ratio2, paired = TRUE), 
+                wilcox.test(Cond1_ratio1, Cond4_ratio1, paired = TRUE)),
+    cliff_delta = list(cliff.delta(Cond1_ratio1, Cond3_ratio1), 
+                       cliff.delta(Cond1_ratio2, Cond3_ratio2), 
+                       cliff.delta(Cond1_ratio1, Cond4_ratio1))
+  ) %>%
+  mutate(
+    W = map_dbl(test, ~ .x$statistic),
+    p_value = map_dbl(test, ~ .x$p.value),
+    cliff_d = map_dbl(cliff_delta, ~ .x$estimate)
+  ) %>%
+  select(Phase, W, p_value, cliff_d)
+
+# Print results clearly
+print(ratios_bt_cond)
+
+#correlation
+cor.test(df$Cond1_ratio1, df$Cond1_err, method = "kendall")
+cor.test(df$Cond1_ratio2, df$Cond1_err, method = "kendall")
+cor.test(df$Cond2_ratio1, df$Cond1_err, method = "kendall")
+cor.test(df$Cond2_ratio2, df$Cond1_err, method = "kendall")
+
+ggplot(df, aes(x = Phase, y = Cond2_ratio2)) +
+  geom_boxplot() +
+  theme_minimal()
+
+```
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)  # For significance stars
+
+# Define the ratios to plot
+ratio_columns <- c("Cond1_ratio2", "Cond2_ratio2", "Cond3_ratio2", "Cond4_ratio2")
+# Create a custom label mapping
+ratio_labels <- c(
+  "Cond1_ratio2" = "Low Extraneous & Low Intrinsic",
+  "Cond2_ratio2" = "Low Extraneous & High Intrinsic",
+  "Cond3_ratio2" = "High Extraneous & Low Intrinsic",
+  "Cond4_ratio2" = "High Extraneous & High Intrinsic"
+)
+
+# Reshape data to long format for ggplot
+df_long <- df %>%
+  pivot_longer(cols = all_of(ratio_columns), names_to = "Ratio", values_to = "Value") %>%
+  mutate(
+    Phase = factor(Phase, levels = c("Train", "Test"), labels = c("Train", "Transfer")) # Reorders & renames
+  )
+
+# Perform Wilcoxon tests manually and store p-values
+stat_tests <- df_long %>%
+  group_by(Ratio) %>%
+  summarise(
+    test = list(wilcox.test(Value ~ Phase, data = cur_data())),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_value = map_dbl(test, ~ .x$p.value),
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      TRUE ~ ""
+    )
+  ) %>%
+  select(Ratio, p_value, significance)
+
+# Merge significance results back into the long dataset
+df_long <- df_long %>%
+  left_join(stat_tests, by = "Ratio")
+
+# Create the boxplot and manually add the precomputed p-values
+ggplot(df_long, aes(x = Phase, y = Value, fill = Phase)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Train" = "orange", "Transfer" = "blue")) + # Update colors
+  facet_wrap(~Ratio, scales = "free", labeller = labeller(Ratio = ratio_labels)) +  # Change facet labels
+  theme_minimal() +
+  geom_text(data = stat_tests, aes(x = 1.5, y = max(df_long$Value, na.rm = TRUE) * 1.05, label = significance), inherit.aes = FALSE) + 
+  labs(
+    title = "Comparison of Engagement Across Experiment Phases and Conditions",
+    x = "Phase",
+    y = "Engagment Index"
+  )
+```
+
+```{r}
+# Between conditions
+# Define the ratio columns to use
+selected_ratios <- c("Cond1_ratio2", "Cond2_ratio2", "Cond3_ratio2", "Cond4_ratio2")
+
+# Reshape data to long format
+df_long <- df %>%
+  pivot_longer(cols = all_of(selected_ratios), names_to = "Ratio", values_to = "Value") %>% 
+  mutate(
+    PhaseType = ifelse(Phase == "Train", "Training", "Transfer"),  # Assign row positions
+    Condition_Label = case_when(
+      grepl("Cond1", Ratio) ~ "LE & LI",
+      grepl("Cond2", Ratio) ~ "LE & HI",
+      grepl("Cond3", Ratio) ~ "HE & LI",
+      grepl("Cond4", Ratio) ~ "HE & HI"
+    )
+  )
+
+# Function to extract Wilcoxon test results correctly formatted for stat_pvalue_manual
+extract_pairwise_tests <- function(data) {
+  pw_test <- pairwise.wilcox.test(data$Value, data$Condition_Label, p.adjust.method = "bonferroni")
+  
+  # Convert the wide p-value matrix to long format and rename properly
+  pw_df <- as.data.frame(pw_test$p.value) %>%
+    rownames_to_column(var = "group1") %>%
+    pivot_longer(cols = -group1, names_to = "group2", values_to = "p_value") %>%
+    filter(!is.na(p_value)) %>%
+    mutate(
+      significance = case_when(
+        p_value < 0.001 ~ "***",
+        p_value < 0.01 ~ "**",
+        p_value < 0.05 ~ "*",
+        TRUE ~ "ns"
+      )
+    )
+  return(pw_df)
+}
+
+# Compute Wilcoxon test results separately for Training and Transfer
+stat_tests <- df_long %>%
+  group_by(PhaseType) %>%
+  group_split() %>%
+  map_dfr(~ extract_pairwise_tests(.x) %>% mutate(PhaseType = unique(.x$PhaseType)))
+
+# Adjust y-position for p-values to avoid overlap and add buffer space
+stat_tests <- stat_tests %>%
+  group_by(PhaseType) %>%
+  mutate(y.position = max(df_long$Value, na.rm = TRUE) * (1.2 + 0.15 * row_number())) %>%  # Increase spacing
+  ungroup()
+
+# Create the boxplot and add Wilcoxon test bars with extra space
+ggplot(df_long, aes(x = Condition_Label, y = Value, fill = PhaseType)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Training" = "orange", "Transfer" = "blue")) +
+  facet_grid(PhaseType ~ ., scales = "free", space = "free") +  # Adds more row spacing
+  theme_minimal() +
+  stat_pvalue_manual(stat_tests, label = "significance", y.position = "y.position", tip.length = 0.02) +  # More space for bars
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.3))) +  # Adds space above plot
+  labs(
+    title = "Training vs. Transfer Engagement Comparisons Across Conditions",
+    x = "Condition",
+    y = "Engagement Index"
+  )
+
+
+```
+
+```{r}
+gamma_path <- "C:/Users/caraa/Downloads/ParticipantEEGRatios&GammaPowers.xlsx"
+gdf <- read_excel(gamma_path, sheet = "EEG_Gamma_Clean")
+
+# Ensure Condition is a factor
+gdf <- gdf %>%
+  rename("Phase" = "Train/Test") %>%
+  mutate(Condition = as.factor(Phase)) %>%
+  select("PID", "Phase", 
+         "Cond1_Fz", "Cond1_Cz", "Cond1_Pz", 
+         "Cond2_Fz", "Cond2_Cz", "Cond2_Pz",   
+         "Cond3_Fz", "Cond3_Cz","Cond3_Pz",
+         "Cond4_Fz", "Cond4_Cz", "Cond4_Pz")
+
+wilcox.test(Cond4_Fz ~ Phase, data = gdf)
+#effect size test
+cliff.delta(Cond4_Fz ~ Phase, data = gdf)
+
+
+ratios_bt_cond <- gdf %>%
+  group_by(Phase) %>%
+  summarise(
+    test = list(wilcox.test(Cond1_Fz, Cond2_Fz, paired = TRUE),
+                wilcox.test(Cond1_Fz, Cond3_Fz, paired = TRUE), 
+                wilcox.test(Cond1_Fz, Cond4_Fz, paired = TRUE)),
+    cliff_delta = list(cliff.delta(Cond1_Fz, Cond2_Fz), 
+                       cliff.delta(Cond1_Fz, Cond3_Fz), 
+                       cliff.delta(Cond1_Fz, Cond4_Fz))
+  ) %>%
+  mutate(
+    W = map_dbl(test, ~ .x$statistic),
+    p_value = map_dbl(test, ~ .x$p.value),
+    cliff_d = map_dbl(cliff_delta, ~ .x$estimate)
+  ) %>%
+  select(Phase, W, p_value, cliff_d)
+#shapiro.test(gdf$Cond4_Pz)
+#hist(gdf$Cond4_Pz)
+```
+
+```{r}
+
+# Reshape Data into Long Format
+df_long <- gdf %>%
+  pivot_longer(cols = starts_with("Cond"), names_to = "Condition", values_to = "Gamma_Power") %>%
+  separate(Condition, into = c("Condition", "Electrode"), sep = "_") %>% # Splitting 'Cond1_Fz' into 'Cond1' and 'Fz' 
+  mutate(Phase = ifelse(Phase == "Test", "Transfer", "Training"))
+
+# Perform Wilcoxon Tests for Each Condition and Electrode
+stat_tests <- df_long %>%
+  group_by(Condition, Electrode) %>%
+  summarise(
+    test = list(wilcox.test(Gamma_Power ~ Phase, data = cur_data())),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    W = map_dbl(test, ~ .x$statistic),
+    p_value = map_dbl(test, ~ .x$p.value),
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      TRUE ~ "ns"
+    ),
+    group1 = "Training",   # Manually assigning Training & Transfer
+    group2 = "Transfer"
+  ) %>%
+  select(Condition, Electrode, group1, group2, W, p_value, significance)
+
+# Compute Cliff’s Delta Effect Size for Each Condition & Electrode
+cliffs_delta <- df_long %>%
+  group_by(Condition, Electrode) %>%
+  summarise(
+    delta = cliff.delta(Gamma_Power ~ Phase, data = cur_data())$estimate,
+    .groups = "drop"
+  )
+
+# Merge Effect Size with Statistical Results
+stat_tests <- stat_tests %>%
+  left_join(cliffs_delta, by = c("Condition", "Electrode"))
+
+# Adjust y-position for p-values to avoid overlap
+stat_tests <- stat_tests %>%
+  group_by(Condition, Electrode) %>%
+  mutate(y.position = max(df_long$Gamma_Power, na.rm = TRUE) * (1.2 + 0.15 * row_number())) %>%
+  ungroup()
+
+# Create the boxplot and add Wilcoxon test bars
+ggplot(df_long, aes(x = Phase, y = Gamma_Power, fill = Phase)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Training" = "orange", "Transfer" = "blue")) +
+  facet_grid(Condition ~ Electrode, scales = "free") +  # Separate by Condition and Electrode
+  theme_minimal() +
+  stat_pvalue_manual(stat_tests, 
+                     label = "significance", 
+                     y.position = "y.position",  
+                     tip.length = 0.05, 
+                     inherit.aes = FALSE) +  # Prevents inheriting global aesthetics
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.3))) +  # Adds space above plot
+  labs(
+    title = "Training vs. Transfer: Gamma Power Comparisons",
+    x = "Condition",
+    y = "Gamma Power (Z-Scored, Log Transformed)"
+  )
+
+```
+
+```{r}
+write.csv(df_long, "C:/Users/caraa/Downloads/gamma.csv")
+```
+
+```{r}
+file_path <- "C:/Users/caraa/OneDrive - UCB-O365/CLT_ONR_XR_Training/VRTRAIN_CU_fNIRS_EEG_studies/Experiment 1/experimental_data/Aggregated_CU_Exp1.xlsx"
+agg <- read_excel(file_path, sheet = "AggData", col_names = T)
+
+new_ratios_bt_cond <- agg %>%
+  group_by(Phase) %>%
+  summarise(
+    test = list(wilcox.test(EngagementRatio2_Train, ErrorPer_Test, paired = TRUE),
+                wilcox.test(EngagementRatio2_Train, TrainingTime, paired = TRUE), 
+                wilcox.test(EngagementRatio2_Test, ErrorPer_Test, paired = TRUE)),
+                wilcox.test(EngagementRatio2_Test, TrainingTime, paired = TRUE)),
+    cliff_delta = list(cliff.delta(EngagementRatio2_Train, ErrorPer_Test), 
+                       cliff.delta(EngagementRatio2_Train, ErrorPer_Test), 
+                       cliff.delta(EngagementRatio2_Test, ErrorPer_Test)), 
+                      cliff.delta(EngagementRatio2_Test, ErrorPer_Test))
+  ) %>%
+  mutate(
+    W = map_dbl(test, ~ .x$statistic),
+    p_value = map_dbl(test, ~ .x$p.value),
+    cliff_d = map_dbl(cliff_delta, ~ .x$estimate)
+  ) %>%
+  select(Phase, W, p_value, cliff_d)
+
+EngagementRatio2_Train
+EngagementRatio2_Test
+```
+
+```{r}
+alldata <- "C:/Users/caraa/OneDrive/Desktop/VRpaper/all_eeg.xlsx"
+alldf <- read_excel(alldata, sheet = "all_data")
+
+# Ensure Phase values are properly formatted
+alldf$Phase <- tolower(alldf$Phase)
+alldf$ratio2 <- as.numeric(format(alldf$ratio2, scientific = FALSE))
+# Function to perform Wilcoxon test and Cliff's Delta
+perform_tests <- function(data, phase) {
+  # Filter data for given phase
+  df_filtered <- data %>%
+    filter(Phase == phase, ExtraneousLoad == 0) %>%
+    select(IntrinsicLoad,Fz, ratio2, ErrorPer_Test, TrainingTime)
+  
+  # Split into two groups
+  group_low <- df_filtered %>% filter(IntrinsicLoad == 0) %>% pull(Fz)
+  group_high <- df_filtered %>% filter(IntrinsicLoad == 1) %>% pull(Fz)
+  
+  beh_group_low <- df_filtered %>% filter(IntrinsicLoad == 0) %>% pull(ErrorPer_Test)
+  beh_group_high <- df_filtered %>% filter(IntrinsicLoad == 1) %>% pull(ErrorPer_Test)
+  
+  #print(length(group_high))
+  #print(length(df_filtered$ErrorPer_Test))
+
+  # Wilcoxon Rank-Sum Test
+  wilcox_test <- wilcox.test(group_low, group_high, alternative = "two.sided", paired = T)
+
+  # Cliff’s Delta
+  cliff_delta <- cliff.delta(group_low, group_high)
+  
+  #correlation
+  highcorre <- cor.test(group_high, beh_group_high, method = "spearman")
+  lowcorre <- cor.test(group_low, beh_group_low , method = "spearman")
+
+  # Return results
+  list(
+    phase = phase,
+    wilcox_stat = wilcox_test$statistic,
+    wilcox_p = wilcox_test$p.value,
+    cliffs_delta = cliff_delta$estimate,
+    cliffs_magnitude = cliff_delta$magnitude,
+    lowcorrelation = lowcorre$p.value,
+    highcorrelation = highcorre$p.value
+  )
+}
+
+# Run tests for each phase
+results_train <- perform_tests(alldf, "train")
+results_test <- perform_tests(alldf, "test")
+
+
+
+
+```
+
+```{r}
+#ratio2 when extraneous load increases, first for train then test
+# Subset data for Train phase and Intrinsic Load = 0
+df_filtered <- alldf %>% filter(Phase == "Train", IntrinsicLoad == 0)
+#df_filtered <- df_filtered[-3,]
+# Extract paired samples
+group_low <- df_filtered %>% filter(ExtraneousLoad == 0) %>% pull(ratio1)
+group_high <- df_filtered %>% filter(ExtraneousLoad == 1) %>% pull(ratio1)
+
+wilcox.test(group_low, group_high, paired = TRUE, alternative = "two.sided")
+cliff.delta(group_low, group_high)
+
+#just test phase
+df_filtered <- alldf %>% filter(Phase == "Test", IntrinsicLoad == 0)
+#df_filtered <- df_filtered[-3,]
+# Extract paired samples
+group_low <- df_filtered %>% filter(ExtraneousLoad == 0) %>% pull(ratio1)
+group_high <- df_filtered %>% filter(ExtraneousLoad == 1) %>% pull(ratio1)
+
+# Perform Wilcoxon Signed-Rank Test
+wilcox.test(group_low, group_high, paired = TRUE, alternative = "two.sided")
+cliff.delta(group_low, group_high)
+
+#Gamma
+df_filtered <- alldf %>% filter(Phase == "Train", ExtraneousLoad == 0)
+#df_filtered <- df_filtered[-3,]
+# Extract paired samples
+group_low <- df_filtered %>% filter(IntrinsicLoad == 0) %>% pull(ratio1)
+group_high <- df_filtered %>% filter(IntrinsicLoad == 1) %>% pull(ratio1)
+
+# Perform Wilcoxon Signed-Rank Test
+wilcox.test(group_low, group_high, paired = TRUE, alternative = "two.sided")
+cliff.delta(group_low, group_high)
+
+df_filtered <- alldf %>% filter(Phase == "Test", ExtraneousLoad == 0)
+#df_filtered <- df_filtered[-3,]
+# Extract paired samples
+group_low <- df_filtered %>% filter(IntrinsicLoad == 0) %>% pull(ratio1)
+group_high <- df_filtered %>% filter(IntrinsicLoad == 1) %>% pull(ratio1)
+
+# Perform Wilcoxon Signed-Rank Test
+wilcox.test(group_low, group_high, paired = TRUE, alternative = "two.sided")
+cliff.delta(group_low, group_high)
+```
+
+```{r}
+file_path <- "C:/Users/caraa/OneDrive/Desktop/VRpaper/ParticipantEEGRatios&GammaPowers.xlsx"
+df <- read_excel(file_path, sheet = "all_eeg")
+beh_path <- "C:/Users/caraa/OneDrive/Desktop/VRpaper/all_eeg.xlsx"
+behdf <- read_excel(beh_path, sheet = "beh")
+
+df$diffIntrinsic_ratio1 <- df$Cond2_ratio1 - df$Cond1_ratio1
+df$diffIntrinsic_ratio2 <- df$Cond2_ratio2 - df$Cond1_ratio2
+df$diffIntrinsic_Fz <- df$Cond2_Fz - df$Cond1_Fz
+df$diffIntrinsic_Cz <- df$Cond2_Cz - df$Cond1_Cz
+df$diffIntrinsic_Pz <- df$Cond2_Pz - df$Cond1_Pz
+
+df$diffExtraneous_ratio1 <- df$Cond3_ratio1 - df$Cond1_ratio1
+df$diffExtraneous_ratio2 <- df$Cond3_ratio2 - df$Cond1_ratio2
+df$diffExtraneous_Fz <- df$Cond3_Fz - df$Cond1_Fz
+df$diffExtraneous_Cz <- df$Cond3_Cz - df$Cond1_Cz
+df$diffExtraneous_Pz <- df$Cond3_Pz - df$Cond1_Pz
+
+# Conditions: Cond1 = LL, Cond2 = LH, Cond3 = HL, Cond4 = HH
+df_long <- df %>%
+  pivot_longer(cols = starts_with("Cond"), 
+               names_to = c("Condition", ".value"),
+               names_sep = "\\_") %>%
+  mutate(ExtraneousLoad = as.numeric(ifelse(Condition == "Cond1" | Condition == "Cond2", 0, 
+                                  ifelse(Condition == "Cond3" | Condition == "Cond4", 1, "check"))),
+         IntrinsicLoad = as.numeric(ifelse(Condition == "Cond1" | Condition == "Cond3", 0, 
+                                  ifelse(Condition == "Cond2" | Condition == "Cond4", 1, "check")))) %>%
+  rename("Cognitive_Effort" = "ratio1", "Sustained_Attention" = "ratio2", "Phase" = "Train_Test")
+
+alldf <- left_join(df_long, behdf, by = c("PID", "ExtraneousLoad", "IntrinsicLoad", "Phase"))
+alldf <- distinct(alldf)
+
+
+
+# Define EEG indices and behavioral metrics
+eeg_indices <- c("Fz", "Cz", "Pz", "Cognitive_Effort", "Sustained_Attention")
+behavioral_metrics <- c("ErrorPer_Train", "ErrorPer_Test", "TrainingTime", "TestingTime")
+
+# Ensure EEG and behavioral metrics are numeric
+alldf[eeg_indices] <- lapply(alldf[eeg_indices], as.numeric)
+alldf[behavioral_metrics] <- lapply(alldf[behavioral_metrics], as.numeric)
+
+# Apply log transformation to ratio1 (add a small constant to avoid log(0))
+alldf$logCognitive_Effort <- log(alldf$Cognitive_Effort + 1e-6)
+alldf$logSustained_Attention <- log(alldf$Sustained_Attention + 1e-6)
+# Update the EEG indices to include log-transformed ratio1 instead of raw ratio1
+eeg_indices <- c("Fz", "Cz", "Pz", "logCognitive_Effort", "logSustained_Attention", 
+                 "diffIntrinsic_ratio1", "diffIntrinsic_ratio2", "diffIntrinsic_Fz", "diffIntrinsic_Cz", "diffIntrinsic_Pz", 
+                 "diffExtraneous_ratio1", "diffExtraneous_ratio2", "diffExtraneous_Fz", "diffExtraneous_Cz", "diffExtraneous_Pz")
+
+# Define conditions
+conditions <- list(
+  "Low Extraneous & Low Intrinsic" = alldf %>% filter(ExtraneousLoad == 0, IntrinsicLoad == 0),
+  "Low Extraneous & High Intrinsic" = alldf %>% filter(ExtraneousLoad == 0, IntrinsicLoad == 1), 
+  "High Extraneous & Low Intrinsic" = alldf %>% filter(ExtraneousLoad == 1, IntrinsicLoad == 0),
+  "High Extraneous & High Intrinsic" = alldf %>% filter(ExtraneousLoad == 1, IntrinsicLoad == 1)
+)
+
+# Initialize results storage
+correlation_results <- data.frame()
+
+# Compute Spearman correlations for each condition and phase
+for (condition_name in names(conditions)) {
+  df_filtered <- conditions[[condition_name]]
+  
+  for (phase in c("Train", "Test")) {
+    df_phase <- df_filtered %>% filter(Phase == phase)
+    print(head(df_filtered))
+    for (eeg in eeg_indices) {
+      for (behavior in behavioral_metrics) {
+        # Compute Spearman correlation (fixing exact p-value issue)
+        if (all(is.na(df_phase[[eeg]])) | all(is.na(df_phase[[behavior]]))) {
+          next  # Skip if the column is completely NA
+        }
+        
+        correlation_test <- cor.test(as.numeric(df_phase[[eeg]]), 
+                                     as.numeric(df_phase[[behavior]]), 
+                                     method = "spearman", 
+                                     exact = FALSE, 
+                                     use = "complete.obs")
+        print(head(correlation_test))
+        # Store results
+        correlation_results <- rbind(correlation_results, data.frame(
+          Condition = condition_name,
+          Phase = phase,
+          EEG_Index = eeg,
+          Behavioral_Metric = behavior,
+          Spearman_Rho = correlation_test$estimate,
+          p_value = correlation_test$p.value
+        ))
+        print(head(correlation_results))
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+# Save results as CSV
+write.csv(correlation_results, "C:/Users/caraa/Downloads/eeg-behavior-stats.csv", row.names = FALSE)
+
+# Filter significant correlations (p < 0.05)
+significant_results <- correlation_results %>% filter(p_value < 0.05)
+
+# Manually select the four key correlations with updated two-line titles and y-axis labels
+selected_correlations <- data.frame(
+  EEG_Index = c("Cz", "Pz", "Fz", "log_ratio1"),
+  Behavioral_Metric = c("TestingTime", "ErrorPer_Train", "TestingTime", "TestingTime"),
+  Condition = c("High Extraneous & Low Intrinsic", "High Extraneous & Low Intrinsic", 
+                "High Extraneous & Low Intrinsic", "Low Extraneous & High Intrinsic"),
+  Title = c(
+    "Spearman Correlation between\nInformation Integration at Cz and Testing Duration\nwhen extraneous load is high",
+    "Spearman Correlation between\nInformation Integration at Pz and Error % during Training\nwhen extraneous load is high",
+    "Spearman Correlation between\nInformation Integration at Fz and Testing Duration\nwhen extraneous load is high",
+    "Spearman Correlation between\nCognitive Effort and Testing Duration\nwhen intrinsic load is high"
+  ),
+  X_Label = c("Information Integration at Cz", 
+              "Information Integration at Pz", 
+              "Information Integration at Fz", 
+              "Cognitive Effort"),
+  Y_Label = c("Testing Duration", 
+              "Error % during Training", 
+              "Testing Duration", 
+              "Testing Duration")
+)
+
+# Generate scatter plots for the selected correlations
+plots <- list()
+for (i in 1:nrow(selected_correlations)) {
+  row <- selected_correlations[i, ]
+  
+  df_plot <- alldf %>%
+    filter(ExtraneousLoad == (row$Condition == "High Extraneous & Low Intrinsic"), 
+           IntrinsicLoad == (row$Condition == "Low Extraneous & High Intrinsic"))
+  
+  p <- ggplot(df_plot, aes_string(x = row$EEG_Index, y = row$Behavioral_Metric)) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", color = "blue", se = TRUE) +
+    labs(title = row$Title, x = row$X_Label, y = row$Y_Label) +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5, size = 12))  # Center-align title
+  
+  plots[[i]] <- p
+}
+
+# Arrange all plots in a 2x2 grid and save
+grid_plot <- grid.arrange(grobs = plots, ncol = 2)
+ggsave("C:/Users/caraa/Downloads/significant_correlations_grid.png", grid_plot, width = 12, height = 10)
+
+
+```
+
+```{r}
+alldata <- "C:/Users/caraa/Downloads/all_eeg.xlsx"
+eegdf<- read_excel(alldata, sheet = "all_data")
+
+# Ensure numeric columns (convert character values to numeric where needed)
+eeg_indices <- c("Fz", "Cz", "Pz", "ratio1", "ratio2")
+eegdf[eeg_indices] <- lapply(eegdf[eeg_indices], function(x) as.numeric(as.character(x)))
+
+# Ensure Intrinsic Load and Extraneous Load are properly formatted
+eegdf$IntrinsicLoad <- as.numeric(eegdf$IntrinsicLoad)
+eegdf$ExtraneousLoad <- as.factor(eegdf$ExtraneousLoad)  # Factor for color coding
+
+# **Filter for Training Phase only**
+eegdf <- eegdf %>% filter(Phase == "Train")
+
+# Transform data into long format for faceting
+df_long <- eegdf %>%
+  pivot_longer(cols = all_of(eeg_indices), names_to = "EEG_Index", values_to = "EEG_Value")
+
+# Aggregate median values for each EEG index, Intrinsic Load, and Extraneous Load condition
+df_summary <- df_long %>%
+  group_by(IntrinsicLoad, ExtraneousLoad, EEG_Index) %>%
+  summarise(MedianValue = median(EEG_Value, na.rm = TRUE))
+
+facet_labels <- c(
+    "Fz" = "Info Integration at Fz",
+    "Cz" = "Info Integration at Cz",
+    "Pz" = "Info Integration at Pz",
+    "ratio1" = "Cognitive Effort",
+    "ratio2" = "Sustained Attention"
+  )
+# Generate the plot with updated x-axis labels
+p <- ggplot(df_summary, aes(x = IntrinsicLoad, y = MedianValue, color = ExtraneousLoad)) +
+  geom_line(size = 1.2) +
+  facet_wrap(~EEG_Index, scales = "free_y", labeller = labeller(EEG_Index = c(
+    "Fz" = "Median Info Integration at Fz",
+    "Cz" = "Median Info Integration at Cz",
+    "Pz" = "Median Info Integration at Pz",
+    "ratio1" = "Median Cognitive Effort",
+    "ratio2" = "Median Sustained Attention"
+  ))) +
+  scale_x_continuous(breaks = c(0, 1), labels = c("Low", "High")) +  # Replace x-axis with "Low" and "High"
+  scale_color_manual(values = c("red", "blue"), labels = c("Extraneous Low", "Extraneous High")) +
+  labs(title = "Comparison of EEG Indexes During Training Across Workload Conditions",
+       x = "Intrinsic Load",
+       y = "Median Value",
+       color = "Legend") +
+  theme_minimal() +
+  theme(text = element_text(size = 14), legend.title = element_text(color = "red"))
+
+# Save the plot
+ggsave("C:/Users/caraa/Downloads/eeg_median_comparison_train.png", p, width = 12, height = 8)
+```
+
+
+
+
+```{r}
+library(dplyr)
+file_path <- "C:/Users/caraa/OneDrive/Desktop/VRpaper/all_eeg.xlsx"
+alldf<- read_excel(file_path, sheet = "all_data")
+alldf <- alldf %>% mutate(Condition = ifelse(ExtraneousLoad == 0 & IntrinsicLoad == 0, "LL", 
+                                   ifelse(ExtraneousLoad == 0 & IntrinsicLoad == 1, "LH", 
+                                          ifelse(ExtraneousLoad == 1 & IntrinsicLoad == 0, "HL", 
+                                                 "HH"))))
+
+
+
+# Convert necessary columns to numeric
+numeric_columns <- c("Fz", "Cz", "Pz", "ErrorPer_Train", "ErrorPer_Test", "TrainingTime", "TestingTime")
+alldf[numeric_columns] <- lapply(alldf[numeric_columns], as.numeric)
+
+# Define a function to compute Spearman correlation
+compute_correlation <- function(df_filtered, eeg_index, behavior_metric) {
+  x <- as.numeric(df_filtered[[eeg_index]])
+  y <- as.numeric(df_filtered[[behavior_metric]])
+
+  # Handle cases where conversion to numeric fails
+  if (any(is.na(x)) || any(is.na(y))) {
+    print(paste("Warning: NA values detected in", eeg_index, "or", behavior_metric))
+  }
+
+  # Perform Spearman correlation
+  cor_result <- cor.test(x, y, method = "spearman")
+
+  return(data.frame(
+    EEG_Index = eeg_index,
+    Behavioral_Metric = behavior_metric,
+    Spearman_Rho = cor_result$estimate,
+    p_value = cor_result$p.value
+  ))
+}
+
+# Generate the correlation table for each condition & phase
+generate_table <- function(data, condition, phase) {
+  df_filtered <- data %>% filter(Condition == condition, Phase == phase)
+
+  eeg_indices <- c("Fz", "Cz", "Pz")  # Specify EEG channels
+  behavior_metrics <- c("ErrorPer_Train", "ErrorPer_Test", "TrainingTime", "TestingTime")
+
+  results <- do.call(rbind, lapply(eeg_indices, function(eeg) {
+    do.call(rbind, lapply(behavior_metrics, function(metric) {
+      compute_correlation(df_filtered, eeg, metric)
+    }))
+  }))
+
+  results$Condition <- condition
+  results$Phase <- phase
+  return(results)
+}
+
+# Run for different conditions and phases
+conditions <- unique(alldf$Condition)
+phases <- unique(alldf$Phase)
+
+correlation_results <- do.call(rbind, lapply(conditions, function(cond) {
+  do.call(rbind, lapply(phases, function(phase) {
+    generate_table(alldf, cond, phase)
+  }))
+}))
+
+# View the final correlation table
+library(ace_tools)
+tools.display_dataframe_to_user(name="Generated EEG Correlation Table", dataframe=correlation_results)
+
+```
+
+
