@@ -1,12 +1,22 @@
-Omg kill me
+# EEG Frequency Analysis
 
-Working backwards
+Completing the EEG Analysis does not require any of the Python Jupyter Notebooks I had used previously
 
-Germane_EEG_Analysis_MNE_Add_Gamma_2.ipynb
+However, to complete the scripts, each participant requires the following:
 
-Requires each participant to have the following:
+1. Their .XDF file from EEG
 
-1. Their .XDF file from EEG : Easy
-    May require changing file names or how they are called
+2. Matlab Events (Video Available On Laptop - Task to upload to GitHub)
 
-2. The kill me part : events data is not just the LSL. It is from MatLab. 
+3. Text file from digitization
+
+
+
+# Statistical Frequency Analysis
+
+StudyTwoGermane < Helpers < gamma.ipynb 
+    Necessary to create one file of the gamma z-scores
+
+NonParametricStats.ipynb is Jalynn's Python script
+    whole_proj_stats (4) is Cara's R script (referenced for the Python Script)
+
